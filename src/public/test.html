@@ -59,12 +59,13 @@ async function poll(reference, device){
       if(!r.ok)throw new Error(d.error||"Could not check payment");
       if(d.status==="SUCCESSFUL"){show("<b>Payment confirmed!</b><br>Your "+d.plan+" subscription is active.");polling=false;return;}
       if(d.status==="FAILED" || d.status==="CANCELLED"){show("<b>Payment cancelled or not completed.</b><br>No subscription was activated. You can start a new payment if needed.",true);polling=false;return;}
-      show('<span class="spinner"></span>Waiting for payment confirmation…<br><small>Reference: '+reference+'</small>');
+      show('<span class="spinner"></span>Waiting for payment confirmation…<br><small>Reference: S.D Companies Ug · '+reference+'</small><br><button type="button" id="stop-wait" style="margin-top:12px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#26334e;color:white;cursor:pointer">I cancelled the prompt</button>');
     }catch(e){show(e.message,true);polling=false;return;}
   }
-  show("Still awaiting confirmation. Reference:<br><b>"+reference+"</b>");
+  show("Still awaiting confirmation. Reference: S.D Companies Ug<br><b>"+reference+"</b>");
   polling=false;
 }
+document.addEventListener("click",e=>{if(e.target && e.target.id==="stop-wait"){pollCancelled=true;polling=false;show("<b>Stopped waiting.</b><br>No subscription was activated. If you cancelled the mobile-money prompt, you can start a new payment when ready.",true);}});
 $("pay").addEventListener("click",async()=>{
   if(!selected)return;
   const phone=$("phone").value.trim();
@@ -78,7 +79,7 @@ $("pay").addEventListener("click",async()=>{
   try{
     const r=await fetch(API+"/checkout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({plan_id:selected,msisdn:phone,device_id:device,idempotency_key:key})});
     const d=await r.json();if(!r.ok)throw new Error(d.error||"Could not start payment");
-    show('<b>Payment request sent.</b><br>Approve the prompt on your phone. If you cancel it, this page will stop waiting once the provider reports cancellation.<br>Amount: '+money(d.amount)+'<br>Reference: '+d.reference);
+    show('<b>Payment request sent.</b><br>Approve the prompt on your phone. If you cancel it, this page will stop waiting once the provider reports cancellation.<br>Amount: '+money(d.amount)+'<br>Reference: S.D Companies Ug · '+d.reference);
     if(d.status!=="SUCCESSFUL")poll(d.reference,device);
   }catch(e){show(e.message,true);}
   finally{btn.disabled=false;btn.textContent="Pay now";}
