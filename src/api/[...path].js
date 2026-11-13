@@ -237,6 +237,63 @@ async function accountSubscription(req, res, url) {
   return json(res, 200, { ok: true, subscription: rows[0] || null });
 }
 
+
+async function requireFirebaseAdmin(req) {
+  const header = String(req.headers.authorization || "");
+  const match = header.match(/^Bearer\\s+(.+)$/i);
+  if (!match) throw Object.assign(new Error("Firebase admin sign-in is required"), { status: 401 });
+  const apiKey = process.env.FIREBASE_WEB_API_KEY;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const allowed = String(process.env.FIREBASE_ADMIN_UIDS || "").split(",").map(x => x.trim()).filter(Boolean);
+  if (!apiKey || !projectId || !allowed.length) {
+    throw Object.assign(new Error("Firebase admin verification is not configured on the server"), { status: 503 });
+  }
+  const response = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + encodeURIComponent(apiKey), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken: match[1] })
+  });
+  const data = await response.json().catch(() => ({}));
+  const user = data.users && data.users[0];
+  if (!response.ok || !user || user.localId == null || user.emailVerified === false) {
+    throw Object.assign(new Error("Firebase admin token is invalid or expired"), { status: 401 });
+  }
+  if (user.email && user.email_verified === false) {
+    throw Object.assign(new Error("Verify the admin email before managing plans"), { status: 403 });
+  }
+  if (!allowed.includes(user.localId)) {
+    throw Object.assign(new Error("This Firebase account is not authorized to manage payment plans"), { status: 403 });
+  }
+  return user.localId;
+}
+
+async function saveAdminPlan(req, res) {
+  await requireFirebaseAdmin(req);
+  const body = getBody(req);
+  const appId = String(body.app_id || "").trim().toLowerCase();
+  const planId = String(body.plan_id || "").trim();
+  const name = String(body.name || "").trim();
+  const description = String(body.description || "").trim();
+  const amount = Number(body.amount);
+  const durationDays = Number(body.duration_days);
+  const currency = String(body.currency || "UGX").trim().toUpperCase();
+  const active = body.active !== false;
+  if (!/^[a-z0-9][a-z0-9_-]{2,63}$/.test(appId)) return json(res, 400, { error: "Invalid app_id" });
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(planId)) return json(res, 400, { error: "Invalid plan_id" });
+  if (!name || name.length > 100 || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 36500) {
+    return json(res, 400, { error: "Enter a valid plan name, price and duration" });
+  }
+  if (!/^[A-Z]{3}$/.test(currency)) return json(res, 400, { error: "Currency must be a 3-letter code" });
+  const apps = await query("SELECT app_id FROM apps WHERE app_id=$1 AND active=true LIMIT 1", [appId]);
+  if (!apps[0]) return json(res, 404, { error: "App is not registered or is disabled in Neon" });
+  await query(
+    "INSERT INTO subscription_plans (id,app_id,name,description,amount,duration_days,currency,features,active) VALUES ($1,$2,$3,$4,$5,$6,$7,'[]'::jsonb,$8) ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,amount=EXCLUDED.amount,duration_days=EXCLUDED.duration_days,currency=EXCLUDED.currency,active=EXCLUDED.active WHERE subscription_plans.app_id=EXCLUDED.app_id",
+    [planId, appId, name, description, amount, durationDays, currency, active]
+  );
+  const saved = await query("SELECT id,app_id,name,amount,duration_days,currency,active FROM subscription_plans WHERE id=$1 AND app_id=$2 LIMIT 1", [planId, appId]);
+  if (!saved[0]) return json(res, 409, { error: "Plan ID is already used by another app" });
+  return json(res, 200, { ok: true, synced: true, plan: { ...saved[0], amount: Number(saved[0].amount), duration_days: Number(saved[0].duration_days) } });
+}
+
 module.exports = async function handler(req, res) {
   try {
     const url = new URL(req.url, "https://internal.local");
@@ -286,6 +343,7 @@ module.exports = async function handler(req, res) {
         });
       }
     }
+    if (req.method === "POST" && path === "/api/admin/plans") return await saveAdminPlan(req, res);
     if (req.method === "POST" && path === "/api/checkout") return await startCheckout(req, res);
     if (req.method === "GET" && path === "/api/checkout/status") return await checkCheckout(req, res, url);
     if (req.method === "GET" && path === "/api/account/subscription") return await accountSubscription(req, res, url);
