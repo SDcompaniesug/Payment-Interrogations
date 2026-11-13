@@ -127,14 +127,6 @@ async function startCheckout(req, res) {
   const plan = await getPlan(planId);
   if (!plan) return json(res, 404, { error: "Selected plan is unavailable" });
 
-  const recent = await query(
-    "SELECT COUNT(*)::int AS count FROM payments WHERE (user_id=$1 OR msisdn=$2) AND created_at > now() - interval '10 minutes' AND status IN ('CREATED','PENDING')",
-    [deviceId, phone]
-  );
-  if (Number(recent[0]?.count || 0) >= 3) {
-    return json(res, 429, { error: "Too many pending payment attempts. Please wait a few minutes before trying again." });
-  }
-
   const existing = await query(
     "SELECT reference, status, gateway_tid, amount, msisdn FROM payments WHERE user_id=$1 AND idempotency_key=$2 LIMIT 1",
     [deviceId, idempotencyKey]
