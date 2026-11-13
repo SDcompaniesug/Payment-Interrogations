@@ -1,0 +1,9 @@
+import {createHash,randomBytes,scryptSync,timingSafeEqual} from "node:crypto";import {SignJWT,jwtVerify} from "jose";import {cookies} from "next/headers";
+export function passHash(p:string){const salt=randomBytes(16).toString("hex");return salt+":"+scryptSync(p,salt,64).toString("hex");}
+export function passOk(p:string,h:string){const a=h.split(":");if(a.length!==2)return false;const x=scryptSync(p,a[0],64),y=Buffer.from(a[1],"hex");return x.length===y.length&&timingSafeEqual(x,y);}
+export function keyHash(k:string){return createHash("sha256").update((process.env.API_KEY_PEPPER||"unset")+k).digest("hex");}
+const jwtKey=()=>new TextEncoder().encode(process.env.SESSION_SECRET||"missing-session-secret");
+export async function setSession(user:string,merchant:string){const t=await new SignJWT({merchant}).setProtectedHeader({alg:"HS256"}).setSubject(user).setIssuedAt().setExpirationTime("7d").sign(jwtKey());(await cookies()).set("sdpay_session",t,{httpOnly:true,secure:process.env.NODE_ENV==="production",sameSite:"lax",path:"/",maxAge:604800});}
+export async function session(){try{const t=(await cookies()).get("sdpay_session")?.value;if(!t)return null;const r=await jwtVerify(t,jwtKey());if(typeof r.payload.sub!=="string"||typeof r.payload.merchant!=="string")return null;return {user:r.payload.sub,merchant:r.payload.merchant};}catch{return null;}}
+export async function clearSession(){(await cookies()).delete("sdpay_session");}
+export async function apiMerchant(auth:string|null){if(!auth?.startsWith("Bearer "))return null;const k=auth.slice(7);await (await import("@/lib/db")).ensureSchema();const rows=await (await import("@/lib/db")).db().unsafe("SELECT merchant_id FROM sd_api_keys WHERE prefix=$1 AND secret_hash=$2 LIMIT 1",[k.slice(0,16),keyHash(k)]);return rows[0]?.merchant_id||null;}

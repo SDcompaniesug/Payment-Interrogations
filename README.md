@@ -1,30 +1,13 @@
 # S.D Pay
+S.D Pay is the Uganda-only payment platform of S.D Payments LTD, a brand of S.D Companies Ug.
 
-S.D Pay is the Uganda-only payment platform brand of **S.D Payments LTD**, a company under **S.D Companies Ug**.
+## Sandbox features
+Merchant registration/login, PostgreSQL-backed merchant data, hashed test API keys shown once, hosted payment links, simulated checkout, test API payments with idempotency, basic ledger entries and simulated payout records.
 
-## Current state
-Initial Next.js 15 + TypeScript website and API foundation. The public site is a preview shell. Payment execution is deliberately disabled: no payment is attempted until provider onboarding, regulatory review, credentials, database migrations, merchant authentication, signed callbacks and reconciliation have been implemented and verified.
+## Setup
+Connect a Neon PostgreSQL database to the Vercel project and set DATABASE_URL. SESSION_SECRET and API_KEY_PEPPER are already configured in Vercel. Tables are created on first database-backed request. Visit /dashboard to register.
 
-## Local development
-- Node.js 20+
-- `npm install`
-- Copy `.env.example` to `.env.local`
-- `npm run dev`
+## Test API
+POST /api/v1/payments with Authorization: Bearer sd_test_... and Idempotency-Key: unique-value. JSON: {"amount":12000,"currency":"UGX","reference":"ORDER-1001","method":"mtn_momo"}.
 
-## API
-- `GET /api/v1/health` — service metadata and readiness flags.
-- `POST /api/v1/payments` — validates request shape and bearer header, then returns a safe 503 until a provider adapter and approvals exist.
-
-Amounts are integer UGX shillings. Never treat a browser redirect as proof of payment.
-
-## Launch gates
-1. Provision PostgreSQL and apply migrations.
-2. Implement merchant registration, MFA, sessions and tenant isolation.
-3. Implement hashed test/live API keys, idempotency storage and audit logs.
-4. Complete MTN MoMo and Airtel Money provider onboarding and sandbox verification.
-5. Add card acquiring through an approved PCI-compliant hosted checkout provider. Do not store PAN/CVV.
-6. Add provider signature verification, replay protection, webhook retries and reconciliation.
-7. Implement immutable double-entry ledger, balances, refunds and payout reservations.
-8. Obtain legal advice and confirm the applicable Bank of Uganda regulatory model and written provider approvals before enabling live funds movement.
-
-Secrets belong in Vercel Environment Variables, never in Git or chat. `SDPAY_PAYMENTS_ENABLED` must remain false until all launch gates are met.
+All outcomes are internal simulations. No MTN/Airtel/card provider is contacted and no funds move. Real provider sandbox work still needs provider-issued credentials and specifications. Live payments and payouts remain disabled pending compliance and written approvals.
