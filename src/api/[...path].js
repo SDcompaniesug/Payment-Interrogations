@@ -40,7 +40,12 @@ async function shashuraToken() {
   }
   const response = await fetch(base + "/auth", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-CLIENT-ID": clientId,
+      "X-Target-Environment": process.env.SHASHURA_TARGET_ENV || "production",
+      "X-COUNTRY": process.env.SHASHURA_COUNTRY || "UG"
+    },
     body: JSON.stringify({ client_id: clientId, client_secret: clientSecret })
   });
   const payload = await response.json().catch(() => ({}));
