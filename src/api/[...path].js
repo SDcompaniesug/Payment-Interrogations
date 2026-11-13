@@ -106,6 +106,18 @@ function getDeviceId(value) {
   return id;
 }
 
+async function getAppId(value) {
+  const appId = String(value || "sd-companies-ug").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{2,63}$/.test(appId)) {
+    throw Object.assign(new Error("A valid app_id is required"), { status: 400 });
+  }
+  const apps = await query("SELECT app_id FROM apps WHERE app_id=$1 AND active=true LIMIT 1", [appId]);
+  if (!apps[0]) {
+    throw Object.assign(new Error("This app is not registered or is disabled"), { status: 403 });
+  }
+  return appId;
+}
+
 async function getPlan(planId) {
   const rows = await query(
     "SELECT id, name, amount, duration_days FROM subscription_plans WHERE id = $1 AND active = true LIMIT 1",
@@ -117,6 +129,7 @@ async function getPlan(planId) {
 async function startCheckout(req, res) {
   const body = getBody(req);
   const deviceId = getDeviceId(body.device_id);
+  const appId = await getAppId(body.app_id);
   const phone = normalizeUgPhone(body.msisdn);
   const planId = String(body.plan_id || "");
   const idempotencyKey = String(body.idempotency_key || "");
@@ -128,8 +141,8 @@ async function startCheckout(req, res) {
   if (!plan) return json(res, 404, { error: "Selected plan is unavailable" });
 
   const existing = await query(
-    "SELECT reference, status, gateway_tid, amount, msisdn FROM payments WHERE user_id=$1 AND idempotency_key=$2 LIMIT 1",
-    [deviceId, idempotencyKey]
+    "SELECT reference, status, gateway_tid, amount, msisdn FROM payments WHERE app_id=$1 AND user_id=$2 AND idempotency_key=$3 LIMIT 1",
+    [appId, deviceId, appId + ":" + idempotencyKey]
   );
   if (existing[0]) {
     return json(res, 200, {
@@ -141,8 +154,8 @@ async function startCheckout(req, res) {
 
   const reference = "SDP" + Date.now().toString(36).toUpperCase() + crypto.randomBytes(5).toString("hex").toUpperCase();
   await query(
-    "INSERT INTO payments (id,user_id,plan_id,msisdn,amount,reference,idempotency_key,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'CREATED')",
-    [crypto.randomUUID(), deviceId, plan.id, phone, plan.amount, reference, idempotencyKey]
+    "INSERT INTO payments (id,app_id,user_id,plan_id,msisdn,amount,reference,idempotency_key,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CREATED')",
+    [crypto.randomUUID(), appId, deviceId, plan.id, phone, plan.amount, reference, appId + ":" + idempotencyKey]
   );
 
   try {
@@ -170,12 +183,13 @@ async function startCheckout(req, res) {
 
 async function checkCheckout(req, res, url) {
   const deviceId = getDeviceId(url.searchParams.get("device_id"));
+  const appId = await getAppId(url.searchParams.get("app_id"));
   const reference = String(url.searchParams.get("reference") || "");
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(reference)) return json(res, 400, { error: "Invalid payment reference" });
 
   const rows = await query(
-    "SELECT p.reference,p.status,p.gateway_tid,p.gateway_state,p.amount,p.msisdn,p.plan_id,sp.name AS plan_name,sp.duration_days FROM payments p JOIN subscription_plans sp ON sp.id=p.plan_id WHERE p.reference=$1 AND p.user_id=$2 LIMIT 1",
-    [reference, deviceId]
+    "SELECT p.reference,p.status,p.gateway_tid,p.gateway_state,p.amount,p.msisdn,p.plan_id,sp.name AS plan_name,sp.duration_days FROM payments p JOIN subscription_plans sp ON sp.id=p.plan_id WHERE p.reference=$1 AND p.user_id=$2 AND p.app_id=$3 LIMIT 1",
+    [reference, deviceId, appId]
   );
   const payment = rows[0];
   if (!payment) return json(res, 404, { error: "Payment not found for this installation" });
@@ -191,8 +205,8 @@ async function checkCheckout(req, res, url) {
         [state, providerTid, JSON.stringify(result), reference]
       );
       await query(
-        "INSERT INTO subscriptions (user_id,plan_id,payment_reference,starts_at,expires_at) SELECT $1,$2,$3,base_time,base_time + ($4 || ' days')::interval FROM (SELECT GREATEST(now(),COALESCE(MAX(expires_at),now())) AS base_time FROM subscriptions WHERE user_id=$1) s ON CONFLICT (payment_reference) DO NOTHING",
-        [deviceId, payment.plan_id, reference, Number(payment.duration_days)]
+        "INSERT INTO subscriptions (app_id,user_id,plan_id,payment_reference,starts_at,expires_at) SELECT $1,$2,$3,$4,base_time,base_time + ($5 || ' days')::interval FROM (SELECT GREATEST(now(),COALESCE(MAX(expires_at),now())) AS base_time FROM subscriptions WHERE app_id=$1 AND user_id=$2) s ON CONFLICT (payment_reference) DO NOTHING",
+        [appId, deviceId, payment.plan_id, reference, Number(payment.duration_days)]
       );
       payment.status = "SUCCESSFUL";
     } else if (["TF", "FAILED", "FAILURE", "CANCELLED", "EXPIRED"].includes(state)) {
@@ -215,9 +229,10 @@ async function checkCheckout(req, res, url) {
 
 async function accountSubscription(req, res, url) {
   const deviceId = getDeviceId(url.searchParams.get("device_id"));
+  const appId = await getAppId(url.searchParams.get("app_id"));
   const rows = await query(
-    "SELECT s.plan_id,sp.name AS plan_name,s.payment_reference,s.starts_at,s.expires_at,p.msisdn FROM subscriptions s JOIN subscription_plans sp ON sp.id=s.plan_id JOIN payments p ON p.reference=s.payment_reference WHERE s.user_id=$1 ORDER BY s.expires_at DESC LIMIT 1",
-    [deviceId]
+    "SELECT s.plan_id,sp.name AS plan_name,s.payment_reference,s.starts_at,s.expires_at,p.msisdn FROM subscriptions s JOIN subscription_plans sp ON sp.id=s.plan_id JOIN payments p ON p.reference=s.payment_reference WHERE s.user_id=$1 AND s.app_id=$2 ORDER BY s.expires_at DESC LIMIT 1",
+    [deviceId, appId]
   );
   return json(res, 200, { ok: true, subscription: rows[0] || null });
 }
