@@ -118,10 +118,10 @@ async function getAppId(value) {
   return appId;
 }
 
-async function getPlan(planId) {
+async function getPlan(appId, planId) {
   const rows = await query(
-    "SELECT id, name, amount, duration_days FROM subscription_plans WHERE id = $1 AND active = true LIMIT 1",
-    [planId]
+    "SELECT id, app_id, name, description, amount, duration_days, currency, features FROM subscription_plans WHERE app_id = $1 AND id = $2 AND active = true LIMIT 1",
+    [appId, planId]
   );
   return rows[0] || null;
 }
@@ -137,7 +137,7 @@ async function startCheckout(req, res) {
     return json(res, 400, { error: "A valid idempotency_key is required" });
   }
 
-  const plan = await getPlan(planId);
+  const plan = await getPlan(appId, planId);
   if (!plan) return json(res, 404, { error: "Selected plan is unavailable" });
 
   const existing = await query(
@@ -188,7 +188,7 @@ async function checkCheckout(req, res, url) {
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(reference)) return json(res, 400, { error: "Invalid payment reference" });
 
   const rows = await query(
-    "SELECT p.reference,p.status,p.gateway_tid,p.gateway_state,p.amount,p.msisdn,p.plan_id,sp.name AS plan_name,sp.duration_days FROM payments p JOIN subscription_plans sp ON sp.id=p.plan_id WHERE p.reference=$1 AND p.user_id=$2 AND p.app_id=$3 LIMIT 1",
+    "SELECT p.reference,p.status,p.gateway_tid,p.gateway_state,p.amount,p.msisdn,p.plan_id,sp.name AS plan_name,sp.duration_days,sp.currency FROM payments p JOIN subscription_plans sp ON sp.id=p.plan_id AND sp.app_id=p.app_id WHERE p.reference=$1 AND p.user_id=$2 AND p.app_id=$3 LIMIT 1",
     [reference, deviceId, appId]
   );
   const payment = rows[0];
@@ -222,7 +222,7 @@ async function checkCheckout(req, res, url) {
   return json(res, 200, {
     ok: true, reference, status: payment.status,
     gateway_state: payment.gateway_state || null,
-    amount: Number(payment.amount), currency: "UGX",
+    amount: Number(payment.amount), currency: payment.currency || "UGX",
     msisdn: payment.msisdn, plan: payment.plan_name
   });
 }
@@ -231,7 +231,7 @@ async function accountSubscription(req, res, url) {
   const deviceId = getDeviceId(url.searchParams.get("device_id"));
   const appId = await getAppId(url.searchParams.get("app_id"));
   const rows = await query(
-    "SELECT s.plan_id,sp.name AS plan_name,s.payment_reference,s.starts_at,s.expires_at,p.msisdn FROM subscriptions s JOIN subscription_plans sp ON sp.id=s.plan_id JOIN payments p ON p.reference=s.payment_reference WHERE s.user_id=$1 AND s.app_id=$2 ORDER BY s.expires_at DESC LIMIT 1",
+    "SELECT s.plan_id,sp.name AS plan_name,sp.description AS plan_description,sp.features AS plan_features,s.payment_reference,s.starts_at,s.expires_at,p.msisdn FROM subscriptions s JOIN subscription_plans sp ON sp.id=s.plan_id AND sp.app_id=s.app_id JOIN payments p ON p.reference=s.payment_reference AND p.app_id=s.app_id WHERE s.user_id=$1 AND s.app_id=$2 ORDER BY s.expires_at DESC LIMIT 1",
     [deviceId, appId]
   );
   return json(res, 200, { ok: true, subscription: rows[0] || null });
@@ -256,8 +256,19 @@ module.exports = async function handler(req, res) {
       return json(res, 200, { ok: true, service: "Shashura SD Pay API", version: "3.0.0", database: rows.length ? "connected" : "unknown" });
     }
     if (req.method === "GET" && path === "/api/plans") {
-      const plans = await query("SELECT id,name,amount,duration_days FROM subscription_plans WHERE active=true ORDER BY amount ASC");
-      return json(res, 200, { currency: "UGX", plans: plans.map(p => ({ ...p, amount: Number(p.amount), duration_days: Number(p.duration_days) })) });
+      const appId = await getAppId(url.searchParams.get("app_id"));
+      const appRows = await query("SELECT name,currency,country,settings FROM apps WHERE app_id=$1 LIMIT 1", [appId]);
+      const plans = await query("SELECT id,name,description,amount,duration_days,currency,features FROM subscription_plans WHERE app_id=$1 AND active=true ORDER BY amount ASC", [appId]);
+      return json(res, 200, {
+        app: { app_id: appId, ...appRows[0] },
+        currency: appRows[0]?.currency || "UGX",
+        plans: plans.map(p => ({ ...p, amount: Number(p.amount), duration_days: Number(p.duration_days) }))
+      });
+    }
+    if (req.method === "GET" && path === "/api/app/config") {
+      const appId = await getAppId(url.searchParams.get("app_id"));
+      const rows = await query("SELECT app_id,name,currency,country,settings FROM apps WHERE app_id=$1 LIMIT 1", [appId]);
+      return json(res, 200, { ok: true, app: rows[0] || null });
     }
     if (req.method === "GET" && path === "/api/gateway/connection-test") {
       try {
