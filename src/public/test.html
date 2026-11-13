@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020"><title>Shashura SD Pay · Checkout</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2e;--line:#26334e;--muted:#9aa9c4;--text:#f5f7ff;--accent:#69e0b1}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#1b2c4c 0,#0b1020 52%);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh;padding:28px 16px}
+main{max-width:540px;margin:0 auto}.brand{font-size:13px;letter-spacing:.15em;color:var(--accent);font-weight:800}.hero{margin:20px 0 24px}.hero h1{font-size:32px;line-height:1.1;margin:0 0 10px}.hero p,.muted{color:var(--muted);line-height:1.5}.panel{background:rgba(18,26,46,.94);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 20px 70px #0005}.label{display:block;font-size:13px;font-weight:700;margin:18px 0 9px;color:#cbd6eb}.plans{display:grid;gap:10px}.plan{width:100%;border:1px solid var(--line);background:#0e1729;color:var(--text);border-radius:14px;padding:15px;text-align:left;display:flex;align-items:center;justify-content:space-between;cursor:pointer}.plan.selected{border-color:var(--accent);background:#12312f}.plan strong{display:block}.plan small{color:var(--muted)}.price{font-weight:800;color:var(--accent)}input{width:100%;border:1px solid var(--line);border-radius:13px;background:#0e1729;color:white;padding:16px;font-size:17px;outline:none}input:focus{border-color:var(--accent)}button.primary{width:100%;border:0;border-radius:14px;background:var(--accent);color:#062218;font-weight:900;font-size:16px;padding:17px;margin-top:20px;cursor:pointer}button:disabled{opacity:.55;cursor:not-allowed}.note{font-size:12px;color:var(--muted);margin-top:13px;line-height:1.5}.status{display:none;margin-top:16px;padding:15px;border-radius:13px;background:#0e1729;border:1px solid var(--line);line-height:1.5;overflow-wrap:anywhere}.status.show{display:block}.status b{color:var(--accent)}.status.error b{color:#ff9a9a}.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff44;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}.foot{text-align:center;color:#71809c;font-size:12px;margin:18px 0}
+</style></head>
+<body><main>
+<div class="brand">SHASHURA · SD PAY</div>
+<header class="hero"><h1>Choose your plan.<br>Stay connected.</h1><p>Secure mobile-money checkout. Your subscription starts only after payment is verified.</p></header>
+<section class="panel">
+<div class="label">1 · Select a subscription</div><div id="plans" class="plans"><p class="muted">Loading plans…</p></div>
+<label class="label" for="phone">2 · Mobile-money number</label><input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. 07XXXXXXXX or 2567XXXXXXXX">
+<button id="pay" class="primary" disabled>Pay now</button>
+<p class="note">Production payment: tapping Pay now will send a real collection request to Shashura. Your mobile operator may display a payment prompt. Only continue if you intend to pay.</p>
+<div id="status" class="status" role="status" aria-live="polite"></div>
+</section><p class="foot">Shashura SD Pay · Secure server-side payment processing</p>
+</main>
+<script>
+const API = location.origin + "/api";
+const $ = id => document.getElementById(id);
+let plans = [], selected = null, polling = false;
+function deviceId(){
+  let id = localStorage.getItem("shashura_installation_id");
+  if(!id){ id = "web_" + (crypto.randomUUID ? crypto.randomUUID().replaceAll("-","") : Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,"0")).join("")); localStorage.setItem("shashura_installation_id",id); }
+  return id;
+}
+function money(v){return "UGX " + Number(v).toLocaleString("en-UG");}
+function show(message, error=false){$("status").className="status show"+(error?" error":"");$("status").innerHTML=message;}
+async function loadPlans(){
+  try{
+    const r=await fetch(API+"/plans",{cache:"no-store"}); const data=await r.json();
+    if(!r.ok) throw new Error(data.error||"Could not load plans");
+    plans=data.plans||[];
+    $("plans").innerHTML="";
+    plans.forEach(p=>{
+      const b=document.createElement("button"); b.type="button"; b.className="plan";
+      b.innerHTML='<span><strong></strong><small></small></span><span class="price"></span>';
+      b.querySelector("strong").textContent=p.name;
+      b.querySelector("small").textContent=p.duration_days+" days";
+      b.querySelector(".price").textContent=money(p.amount);
+      b.addEventListener("click",()=>{selected=p.id;document.querySelectorAll(".plan").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");$("pay").disabled=false;});
+      $("plans").appendChild(b);
+    });
+    if(!plans.length) $("plans").textContent="No active plans are available.";
+  }catch(e){$("plans").textContent=e.message;show(e.message,true);}
+}
+async function poll(reference, device){
+  if(polling)return; polling=true;
+  for(let i=0;i<30;i++){
+    await new Promise(r=>setTimeout(r,5000));
+    try{
+      const u=new URL(API+"/checkout/status");u.searchParams.set("reference",reference);u.searchParams.set("device_id",device);
+      const r=await fetch(u,{cache:"no-store"});const d=await r.json();
+      if(!r.ok)throw new Error(d.error||"Could not check payment");
+      if(d.status==="SUCCESSFUL"){show("<b>Payment confirmed!</b><br>Your "+d.plan+" subscription is active.");polling=false;return;}
+      if(d.status==="FAILED"){show("<b>Payment not completed.</b><br>Please check your mobile-money message or try again with a new payment.",true);polling=false;return;}
+      show('<span class="spinner"></span>Waiting for payment confirmation…<br><small>Reference: '+reference+'</small>');
+    }catch(e){show(e.message,true);polling=false;return;}
+  }
+  show("Still awaiting confirmation. Keep this reference and check again shortly:<br><b>"+reference+"</b>");
+  polling=false;
+}
+$("pay").addEventListener("click",async()=>{
+  if(!selected)return;
+  const phone=$("phone").value.trim();
+  if(!phone){show("Enter your mobile-money number.",true);return;}
+  const plan=plans.find(p=>p.id===selected);
+  if(!plan)return;
+  const ok=confirm("REAL PRODUCTION PAYMENT\n\nYou are requesting "+money(plan.amount)+" for "+plan.name+".\n\nShashura may send a payment prompt to "+phone+". This can charge real money. Continue?");
+  if(!ok)return;
+  const btn=$("pay");btn.disabled=true;btn.textContent="Sending request…";
+  const device=deviceId(), key=crypto.randomUUID ? crypto.randomUUID().replaceAll("-","") : String(Date.now())+Math.random().toString(36).slice(2);
+  try{
+    const r=await fetch(API+"/checkout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({plan_id:selected,msisdn:phone,device_id:device,idempotency_key:key})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||"Could not start payment");
+    show('<b>Payment request sent.</b><br>Approve the prompt on your phone.<br>Amount: '+money(d.amount)+'<br>Reference: '+d.reference);
+    if(d.status!=="SUCCESSFUL")poll(d.reference,device);
+  }catch(e){show(e.message,true);}
+  finally{btn.disabled=false;btn.textContent="Pay now";}
+});
+loadPlans();
+</script></body></html>
