@@ -6,7 +6,7 @@
 <style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#121a2e;--line:#26334e;--muted:#9aa9c4;--text:#f5f7ff;--accent:#69e0b1}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#1b2c4c 0,#0b1020 52%);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh;padding:28px 16px}
-main{max-width:540px;margin:0 auto}.brand{font-size:13px;letter-spacing:.15em;color:var(--accent);font-weight:800}.hero{margin:20px 0 24px}.hero h1{font-size:32px;line-height:1.1;margin:0 0 10px}.hero p,.muted{color:var(--muted);line-height:1.5}.panel{background:rgba(18,26,46,.94);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 20px 70px #0005}.label{display:block;font-size:13px;font-weight:700;margin:18px 0 9px;color:#cbd6eb}.plans{display:grid;gap:10px}.plan{width:100%;border:1px solid var(--line);background:#0e1729;color:var(--text);border-radius:14px;padding:15px;text-align:left;display:flex;align-items:center;justify-content:space-between;cursor:pointer}.plan.selected{border-color:var(--accent);background:#12312f}.plan strong{display:block}.plan small{color:var(--muted)}.price{font-weight:800;color:var(--accent)}input{width:100%;border:1px solid var(--line);border-radius:13px;background:#0e1729;color:white;padding:16px;font-size:17px;outline:none}input:focus{border-color:var(--accent)}button.primary{width:100%;border:0;border-radius:14px;background:var(--accent);color:#062218;font-weight:900;font-size:16px;padding:17px;margin-top:20px;cursor:pointer}button:disabled{opacity:.55;cursor:not-allowed}.note{font-size:12px;color:var(--muted);margin-top:13px;line-height:1.5}.status{display:none;margin-top:16px;padding:15px;border-radius:13px;background:#0e1729;border:1px solid var(--line);line-height:1.5;overflow-wrap:anywhere}.status.show{display:block}.status b{color:var(--accent)}.status.error b{color:#ff9a9a}.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff44;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}.foot{text-align:center;color:#71809c;font-size:12px;margin:18px 0}
+main{max-width:540px;margin:0 auto}.brand{font-size:13px;letter-spacing:.15em;color:var(--accent);font-weight:800}.hero{margin:20px 0 24px}.hero h1{font-size:32px;line-height:1.1;margin:0 0 10px}.hero p,.muted{color:var(--muted);line-height:1.5}.panel{background:rgba(18,26,46,.94);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 20px 70px #0005}.label{display:block;font-size:13px;font-weight:700;margin:18px 0 9px;color:#cbd6eb}.plans{display:grid;gap:10px}.plan{width:100%;border:1px solid var(--line);background:#0e1729;color:var(--text);border-radius:14px;padding:15px;text-align:left;display:flex;align-items:center;justify-content:space-between;cursor:pointer}.plan.selected{border-color:var(--accent);background:#12312f}.plan strong{display:block}.plan small{color:var(--muted)}.price{font-weight:800;color:var(--accent)}input{width:100%;border:1px solid var(--line);border-radius:13px;background:#0e1729;color:white;padding:16px;font-size:17px;outline:none}input:focus{border-color:var(--accent)}button.primary{width:100%;border:0;border-radius:14px;background:var(--accent);color:#062218;font-weight:900;font-size:16px;padding:17px;margin-top:20px;cursor:pointer}button:disabled{opacity:.55;cursor:not-allowed}.note{font-size:12px;color:var(--muted);margin-top:13px;line-height:1.5}.status{display:none;margin-top:16px;padding:15px;border-radius:13px;background:#0e1729;border:1px solid var(--line);line-height:1.5;overflow-wrap:anywhere}.status.show{display:block}.status b{color:var(--accent)}.status.error b{color:#ff9a9a}.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff44;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}.foot{text-align:center;color:#71809c;font-size:12px;margin:18px 0}.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);opacity:0;pointer-events:none;background:#18243a;color:#f5f7ff;border:1px solid #344563;border-radius:999px;padding:12px 20px;font-size:14px;font-weight:700;box-shadow:0 12px 35px #0008;transition:opacity .2s,transform .2s;z-index:20;white-space:nowrap}.toast.show{opacity:1;transform:translate(-50%,0)}
 </style></head>
 <body><main>
 <div class="brand">S.D COMPANIES UG</div>
@@ -17,7 +17,7 @@ main{max-width:540px;margin:0 auto}.brand{font-size:13px;letter-spacing:.15em;co
 <button id="pay" class="primary" disabled>Pay now</button>
 <p class="note">Production payment: tapping Pay now will send a real collection request to your mobile-money provider. Your mobile operator may display a payment prompt. Only continue if you intend to pay.</p>
 <div id="status" class="status" role="status" aria-live="polite"></div>
-</section><p class="foot">S.D Companies Ug · Secure server-side payment processing</p>
+</section><p class="foot">S.D Companies Ug · Secure server-side payment processing</p><div id="toast" class="toast" role="status" aria-live="polite"></div>
 </main>
 <script>
 const API = location.origin + "/api";
@@ -30,6 +30,9 @@ function deviceId(){
 }
 function money(v){return "UGX " + Number(v).toLocaleString("en-UG");}
 function show(message, error=false){$("status").className="status show"+(error?" error":"");$("status").innerHTML=message;}
+let toastTimer;
+function toast(message){const el=$("toast");el.textContent=message;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2600);}
+function clearStatus(){ $("status").className="status"; $("status").textContent=""; }
 async function loadPlans(){
   try{
     const r=await fetch(API+"/plans",{cache:"no-store"}); const data=await r.json();
@@ -58,14 +61,14 @@ async function poll(reference, device){
       const r=await fetch(u,{cache:"no-store"});const d=await r.json();
       if(!r.ok)throw new Error(d.error||"Could not check payment");
       if(d.status==="SUCCESSFUL"){show("<b>Payment confirmed!</b><br>Your "+d.plan+" subscription is active.");polling=false;return;}
-      if(d.status==="FAILED" || d.status==="CANCELLED"){show("<b>Payment cancelled or not completed.</b><br>No subscription was activated. You can start a new payment if needed.",true);polling=false;return;}
+      if(d.status==="FAILED" || d.status==="CANCELLED"){polling=false;clearStatus();toast("Payment cancelled");return;}
       show('<span class="spinner"></span>Waiting for payment confirmation…<br><small>Reference: S.D Companies Ug · '+reference+'</small><br><button type="button" id="stop-wait" style="margin-top:12px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#26334e;color:white;cursor:pointer">I cancelled the prompt</button>');
-    }catch(e){show(e.message,true);polling=false;return;}
+    }catch(e){if(pollCancelled){polling=false;return;}continue;}
   }
-  show("Still awaiting confirmation. Reference: S.D Companies Ug<br><b>"+reference+"</b>");
+  if(!pollCancelled)show("Still awaiting confirmation. Reference: S.D Companies Ug<br><b>"+reference+"</b>");
   polling=false;
 }
-document.addEventListener("click",e=>{if(e.target && e.target.id==="stop-wait"){pollCancelled=true;polling=false;show("<b>Stopped waiting.</b><br>No subscription was activated. If you cancelled the mobile-money prompt, you can start a new payment when ready.",true);}});
+document.addEventListener("click",e=>{if(e.target && e.target.id==="stop-wait"){pollCancelled=true;polling=false;clearStatus();toast("Payment cancelled");}});
 $("pay").addEventListener("click",async()=>{
   if(!selected)return;
   const phone=$("phone").value.trim();
