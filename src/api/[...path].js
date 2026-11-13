@@ -45,7 +45,14 @@ async function shashuraToken() {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload?.data?.access_token) {
-    throw Object.assign(new Error("Shashura authentication failed"), { status: 502 });
+    const providerMessage = String(payload?.message || payload?.error_description || payload?.error || "").slice(0, 240);
+    const providerCode = String(payload?.code || payload?.error_code || "").slice(0, 80);
+    throw Object.assign(new Error("Shashura authentication failed"), {
+      status: 502,
+      providerStatus: response.status,
+      providerMessage,
+      providerCode
+    });
   }
   tokenCache = {
     value: payload.data.access_token,
@@ -240,6 +247,22 @@ module.exports = async function handler(req, res) {
       const plans = await query("SELECT id,name,amount,duration_days FROM subscription_plans WHERE active=true ORDER BY amount ASC");
       return json(res, 200, { currency: "UGX", plans: plans.map(p => ({ ...p, amount: Number(p.amount), duration_days: Number(p.duration_days) })) });
     }
+    if (req.method === "GET" && path === "/api/gateway/connection-test") {
+      try {
+        await shashuraToken();
+        return json(res, 200, { ok: true, provider: "Shashura", authenticated: true });
+      } catch (error) {
+        return json(res, 502, {
+          ok: false,
+          provider: "Shashura",
+          authenticated: false,
+          provider_status: error.providerStatus || null,
+          provider_code: error.providerCode || null,
+          provider_message: error.providerMessage || null,
+          error: "Shashura authentication failed"
+        });
+      }
+    }
     if (req.method === "POST" && path === "/api/checkout") return await startCheckout(req, res);
     if (req.method === "GET" && path === "/api/checkout/status") return await checkCheckout(req, res, url);
     if (req.method === "GET" && path === "/api/account/subscription") return await accountSubscription(req, res, url);
@@ -249,7 +272,12 @@ module.exports = async function handler(req, res) {
     }
     return json(res, 404, { error: "Route not found" });
   } catch (error) {
-    console.error("Shashura SD Pay API error:", error.message);
+    console.error("Shashura SD Pay API error:", JSON.stringify({
+      message: error.message,
+      providerStatus: error.providerStatus || null,
+      providerCode: error.providerCode || null,
+      providerMessage: error.providerMessage || null
+    }));
     return json(res, error.status || 500, { error: error.status ? error.message : "Internal server error" });
   }
 };
